@@ -1689,10 +1689,6 @@ antiAimbotEnabled = false
 antiAimbotMode = "V1" -- V1 Spectrum | V2 Clean Bat Bypass
 antiAimbotModeLabel = nil
 setAntiAimbotVisual = nil
-tauntEnabled = false
-setTauntVisual = nil
-mobSetTaunt = nil
-_tauntThread = nil
 spinEnabled = false
 spinSpeed = 0.35
 spinSpeedName = "Normal"
@@ -5518,9 +5514,7 @@ function enableAntiAimbot()
         local f = antiAimbotFloatingButton:FindFirstChild("Frame")
         if f then paintFloatingBtn(f, true) end
     end
-    local mode = tostring(antiAimbotMode or "V1"):upper():gsub("%s+", "")
-    if mode ~= "V1" and mode ~= "V2" then mode = "V1" end
-    antiAimbotMode = mode
+    local mode = tostring(antiAimbotMode or "V1")
     if mode == "V2" then
         stopSpectrumBypassAimbot()
         local spd = tonumber(BYPASS_AIMBOT_SPEED) or 60
@@ -5543,7 +5537,7 @@ function disableAntiAimbot()
 end
 
 function setAntiAimbotMode(mode)
-    mode = tostring(mode or "V1"):upper():gsub("%s+", "")
+    mode = tostring(mode or "V1")
     if mode ~= "V1" and mode ~= "V2" then mode = "V1" end
     antiAimbotMode = mode
     if antiAimbotModeLabel then
@@ -5560,7 +5554,7 @@ function setAntiAimbotMode(mode)
             startSpectrumBypassAimbot()
         end
     end
-    _lastSavedJSON = nil -- force persist (V2 must survive rejoin)
+    _lastSavedJSON = nil -- force persist
     pcall(saveAllSettings)
     return antiAimbotMode
 end
@@ -5572,46 +5566,6 @@ function toggleAntiAimbot()
         enableAntiAimbot()
     end
     return antiAimbotEnabled
-end
-
--- ==================== TAUNT (chat spam) ====================
-function startTaunt()
-    if _tauntThread then return end
-    tauntEnabled = true
-    _tauntThread = task.spawn(function()
-        while tauntEnabled do
-            pcall(function()
-                local chatService = game:GetService("TextChatService")
-                local channel = chatService and chatService.TextChannels and chatService.TextChannels:FindFirstChild("RBXGeneral")
-                if channel then
-                    channel:SendAsync("sakura on top !")
-                else
-                    local events = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-                    local say = events and events:FindFirstChild("SayMessageRequest")
-                    if say then say:FireServer("sakura on top !", "All") end
-                end
-            end)
-            task.wait(0.2)
-        end
-        _tauntThread = nil
-    end)
-end
-
-function stopTaunt()
-    tauntEnabled = false
-    if _tauntThread then
-        pcall(task.cancel, _tauntThread)
-        _tauntThread = nil
-    end
-end
-
-function toggleTaunt()
-    if tauntEnabled then
-        stopTaunt()
-    else
-        startTaunt()
-    end
-    return tauntEnabled
 end
 
 function enableAutoBat()
@@ -5707,7 +5661,7 @@ local function updateTpBatButtonWithAntiDie(state)
             if state then
                 btnFrame.BackgroundColor3 = getThemeColor()
                 if label then
-                    label.Text = "TP"
+                    label.Text = "TP\nBAT"
                     label.TextColor3 = Color3.fromRGB(0,0,0)
                 end
                 if stroke then
@@ -5715,7 +5669,7 @@ local function updateTpBatButtonWithAntiDie(state)
                     stroke.Thickness = 2.5
                 end
             else
-                if label then label.Text = "TP" end
+                if label then label.Text = "TP\nBAT" end
                 paintFloatingBtn(btnFrame, batDesyncTpEnabled)
             end
         end
@@ -7235,8 +7189,7 @@ function buildConfigTable()
         uiScale = uiScaleValue,
         stealBarScale = stealBarScale or 100,
         antiAimbot = antiAimbotEnabled == true,
-        antiAimbotMode = (tostring(antiAimbotMode or "V1"):upper() == "V2") and "V2" or "V1",
-        taunt = tauntEnabled == true,
+        antiAimbotMode = tostring(antiAimbotMode or "V1"),
         spinEnabled = spinEnabled == true,
         spinSpeed = tonumber(spinSpeed) or 0.35,
         spinSpeedName = tostring(spinSpeedName or "Normal"),
@@ -7415,24 +7368,6 @@ function loadAllSettings()
     local success, data = pcall(function() return HS:JSONDecode(readfile(CONFIG_FILE)) end)
     if not success or not data then return false end
     _isLoading = true
-
-    -- Anti Aimbot Mode MUST be restored early so rejoin keeps V2
-    do
-        local rawMode = data.antiAimbotMode
-        if rawMode == nil and data.AntiAimbotMode ~= nil then rawMode = data.AntiAimbotMode end
-        if type(rawMode) == "string" then
-            local m = string.upper((rawMode:gsub("%s+", "")))
-            if m == "V1" or m == "V2" then
-                antiAimbotMode = m
-            end
-        end
-        if data.antiAimbot == true then
-            antiAimbotEnabled = true
-        elseif data.antiAimbot == false then
-            antiAimbotEnabled = false
-        end
-    end
-
     NS = data.normalSpeed or NS
     CS = data.carrySpeed or CS
     pcall(function()
@@ -7538,32 +7473,12 @@ function loadAllSettings()
     stealBarScale = data.stealBarScale or stealBarScale or 100
     if mainUIScale then mainUIScale.Scale = uiScaleValue / 100 end
     if pbScale then pbScale.Scale = (tonumber(stealBarScale) or 100) / 100 end
-    if data.antiAimbot == true then
-        antiAimbotEnabled = true
-    elseif data.antiAimbot == false then
-        antiAimbotEnabled = false
-    end
+    if data.antiAimbot == true then antiAimbotEnabled = true end
     do
-        local raw = data.antiAimbotMode or data.AntiAimbotMode
-        if type(raw) == "string" and raw ~= "" then
-            local m = string.upper((tostring(raw):gsub("%s+", "")))
-            if m == "V1" or m == "V2" then
-                antiAimbotMode = m
-            end
+        local m = tostring(data.antiAimbotMode or antiAimbotMode or "V1"):upper()
+        if m == "V1" or m == "V2" then
+            antiAimbotMode = m
         end
-        if antiAimbotMode ~= "V1" and antiAimbotMode ~= "V2" then
-            antiAimbotMode = "V1"
-        end
-    end
-    if data.taunt == true then
-        tauntEnabled = true
-        task.defer(function()
-            startTaunt()
-            if setTauntVisual then setTauntVisual(true) end
-            if mobSetTaunt then pcall(mobSetTaunt, true) end
-        end)
-    else
-        stopTaunt()
     end
     if data.spinEnabled == true then spinEnabled = true end
     if type(data.spinSpeed) == "number" then
@@ -8074,8 +7989,6 @@ function resetToFactoryDefaults()
         uiScaleValue = 78
 stealBarScale = 100
 antiAimbotEnabled = false
-antiAimbotMode = "V1"
-tauntEnabled = false
 setAntiAimbotVisual = nil
         if mainUIScale then mainUIScale.Scale = 1 end
         if pbScale then pbScale.Scale = 1 end
@@ -8158,7 +8071,7 @@ function getDefaultButtonPosition(btnName)
     local GAP = 8
     local orderMap = {
         DropBR = 0, AutoLeft = 1, AutoBat = 2,
-        AutoRight = 3, TpDown = 4, Carry = 5, Lagger1 = 6, Lagger2 = 7, AntiAimbot = 8, Taunt = 9
+        AutoRight = 3, TpDown = 4, Carry = 5, Lagger1 = 6, Lagger2 = 7, AntiAimbot = 8
     }
     local order = orderMap[btnName] or 0
     local row = _floor(order / 2)
@@ -11862,7 +11775,7 @@ function buildGui()
         end
     end)
 
-    batDesyncTpSetVisual = mkToggle(combatPage, "TP", function(on)
+    batDesyncTpSetVisual = mkToggle(combatPage, "TP BAT", function(on)
         if on then
             if not batDesyncTpEnabled then toggleBatDesyncTp() end
         else
@@ -11874,7 +11787,7 @@ function buildGui()
     -- TP BAT version: acilir secenek menusu (V1 / V2 / V3)
     do
         local row = mkRow(combatPage, 38)
-        mkLabel(row, "TP Version")
+        mkLabel(row, "TP BAT Version")
         local openBtn = Instance.new("TextButton", row)
         openBtn.Size = UDim2.new(0, 120, 0, 26)
         openBtn.Position = UDim2.new(1, -128, 0.5, -13)
@@ -12268,13 +12181,6 @@ function buildGui()
     end
 
     setESPVIsual = mkToggle(visualPage, "Player ESP", function(on) toggleESP(on) end)
-
-    setTauntVisual = mkToggle(visualPage, "Taunt", function(on)
-        if on then startTaunt() else stopTaunt() end
-        if mobSetTaunt then pcall(mobSetTaunt, on) end
-        pcall(saveAllSettings)
-    end)
-    if setTauntVisual then setTauntVisual(tauntEnabled == true) end
 
     -- ESP Color — same dropdown pattern as Bat Aimbot Mode
     do
@@ -13005,7 +12911,7 @@ function buildGui()
     addKeybindRow(keyPage, "Auto Right", KB.AutoRight)
     addKeybindRow(keyPage, "Auto Bat", KB.AutoBat)
     addKeybindRow(keyPage, "Anti Bat", KB.AntiBat)
-    addKeybindRow(keyPage, "TP", KB.TPBat)
+    addKeybindRow(keyPage, "TP BAT", KB.TPBat)
     -- Bat V2 keybind removed from GUI
     addKeybindRow(keyPage, "Insta Reset", KB.InstaReset)
     addKeybindRow(keyPage, "TP Down", KB.TPFloor)
@@ -13305,7 +13211,7 @@ function createMobilePanel()
     local GAP = 8
     local COLUMNS = 2
     local ROWS = 5
-    -- 10 buttons (includes AntiAimbot + Taunt)
+    -- 9 buttons (includes AntiAimbot)
     local PANEL_W = BTN_W * COLUMNS + GAP * (COLUMNS - 1)
     local PANEL_H = BTN_H * ROWS + (GAP + 10) * (ROWS - 1)
 
@@ -13340,8 +13246,8 @@ function createMobilePanel()
     local ACTIVE_TEXT = Color3.fromRGB(0, 0, 0)
 
     local buttons = {}
-    local buttonNames = {"DropBR", "AutoLeft", "AutoBat", "AutoRight", "TpDown", "Carry", "Lagger1", "Lagger2", "AntiAimbot", "Taunt"}
-    local buttonTexts = {"DROP", "AUTO\nLEFT", "BAT\nAIMBOT", "AUTO\nRIGHT", "TP\nDOWN", "CARRY\nSPD", "LAGGER\nNORMAL", "LAGGER\nCARRY", "ANTI\nAIMBOT", "TAUNT"}
+    local buttonNames = {"DropBR", "AutoLeft", "AutoBat", "AutoRight", "TpDown", "Carry", "Lagger1", "Lagger2", "AntiAimbot"}
+    local buttonTexts = {"DROP\nBR", "AUTO\nLEFT", "BAT\nAIMBOT", "AUTO\nRIGHT", "TP\nDOWN", "CARRY\nSPD", "LAGGER\nNORMAL", "LAGGER\nCARRY", "ANTI\nAIMBOT"}
 
     local function createButton(name, text, order, isToggle, callback)
         local btn = Instance.new("TextButton", btnContainer)
@@ -13583,13 +13489,6 @@ function createMobilePanel()
                 end
                 refreshSpeedModeLabel()
             end
-        elseif name == "Taunt" then
-            callback = function(setActive)
-                toggleTaunt()
-                setActive(tauntEnabled == true)
-                if setTauntVisual then setTauntVisual(tauntEnabled == true) end
-                pcall(saveAllSettings)
-            end
         end
         mobSetAutoBat = buttons.AutoBat and buttons.AutoBat.setActive
         mobSetAutoLeft = buttons.AutoLeft and buttons.AutoLeft.setActive
@@ -13610,7 +13509,6 @@ function createMobilePanel()
         if name == "Lagger1" then mobSetLagger1 = setActive end
         if name == "Lagger2" then mobSetLagger2 = setActive end
         if name == "AntiAimbot" then mobSetAntiAimbot = setActive end
-        if name == "Taunt" then mobSetTaunt = setActive end
     end
 
     if buttons.AutoBat and buttons.AutoBat.setActive then buttons.AutoBat.setActive(autoBatEnabled) end
@@ -13620,7 +13518,6 @@ function createMobilePanel()
     if buttons.Lagger1 and buttons.Lagger1.setActive then buttons.Lagger1.setActive(laggerToggled) end
     if buttons.Lagger2 and buttons.Lagger2.setActive then buttons.Lagger2.setActive(laggerCarryToggled) end
     if buttons.AntiAimbot and buttons.AntiAimbot.setActive then buttons.AntiAimbot.setActive(antiAimbotEnabled) end
-    if buttons.Taunt and buttons.Taunt.setActive then buttons.Taunt.setActive(tauntEnabled == true) end
 
     -- Restore saved panel position, fallback to right side
     do
@@ -13739,7 +13636,7 @@ function createTpBatFloatingButton()
     label.Name = "TextLabel"
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    label.Text = "TP"
+    label.Text = "TP\nBAT"
     label.TextColor3 = Color3.fromRGB(255,255,255)
     label.Font = Enum.Font.GothamBlack
     label.TextSize = 11
@@ -13753,7 +13650,7 @@ function createTpBatFloatingButton()
     table.insert(_floatingUIScales, uiScale)
 
     local function setActive(state)
-        label.Text = "TP"
+        label.Text = "TP\nBAT"
         paintFloatingBtn(btnFrame, state)
     end
 
@@ -14419,13 +14316,8 @@ function updateUIFromLoaded()
         if setSpinVisual then setSpinVisual(true) end
     end
     -- Restore Spin Speed + Anti Aimbot Mode labels from saved config
-    do
-        local m = tostring(antiAimbotMode or "V1"):upper():gsub("%s+", "")
-        if m ~= "V1" and m ~= "V2" then m = "V1" end
-        antiAimbotMode = m
-    end
     if antiAimbotModeLabel then
-        antiAimbotModeLabel.Text = tostring(antiAimbotMode) .. "  ▼"
+        antiAimbotModeLabel.Text = tostring(antiAimbotMode or "V1") .. "  ▼"
     end
     if spinSpeedSelectorLabel then
         spinSpeedSelectorLabel.Text = tostring(spinSpeedName or "Normal") .. "  ▼"
