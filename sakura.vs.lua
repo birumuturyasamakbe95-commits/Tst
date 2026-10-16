@@ -1691,10 +1691,8 @@ antiAimbotModeLabel = nil
 setAntiAimbotVisual = nil
 spinEnabled = false
 spinSpeed = 0.35
-spinSpeedName = "Normal"
 spinConn = nil
 setSpinVisual = nil
-spinSpeedSelectorLabel = nil
 
 setAntiAimbotVisual = nil
 espEnabled = false
@@ -5554,7 +5552,6 @@ function setAntiAimbotMode(mode)
             startSpectrumBypassAimbot()
         end
     end
-    _lastSavedJSON = nil -- force persist
     pcall(saveAllSettings)
     return antiAimbotMode
 end
@@ -7189,10 +7186,9 @@ function buildConfigTable()
         uiScale = uiScaleValue,
         stealBarScale = stealBarScale or 100,
         antiAimbot = antiAimbotEnabled == true,
-        antiAimbotMode = tostring(antiAimbotMode or "V1"),
+        antiAimbotMode = antiAimbotMode or "V1",
         spinEnabled = spinEnabled == true,
-        spinSpeed = tonumber(spinSpeed) or 0.35,
-        spinSpeedName = tostring(spinSpeedName or "Normal"),
+        spinSpeed = spinSpeed or 0.35,
         animPack = currentAnimPack,
         espEnabled = espEnabled,
         antiLag = antiLagEnabled,
@@ -7474,33 +7470,11 @@ function loadAllSettings()
     if mainUIScale then mainUIScale.Scale = uiScaleValue / 100 end
     if pbScale then pbScale.Scale = (tonumber(stealBarScale) or 100) / 100 end
     if data.antiAimbot == true then antiAimbotEnabled = true end
-    do
-        local m = tostring(data.antiAimbotMode or antiAimbotMode or "V1"):upper()
-        if m == "V1" or m == "V2" then
-            antiAimbotMode = m
-        end
+    if data.antiAimbotMode == "V1" or data.antiAimbotMode == "V2" then
+        antiAimbotMode = data.antiAimbotMode
     end
     if data.spinEnabled == true then spinEnabled = true end
-    if type(data.spinSpeed) == "number" then
-        spinSpeed = data.spinSpeed
-    end
-    if type(data.spinSpeedName) == "string" and data.spinSpeedName ~= "" then
-        spinSpeedName = data.spinSpeedName
-        local map = { Slow = 0.15, Normal = 0.35, Fast = 0.60, ["Very Fast"] = 0.90 }
-        if map[spinSpeedName] then
-            spinSpeed = map[spinSpeedName]
-        end
-    else
-        -- derive name from numeric speed
-        local map = { {0.15, "Slow"}, {0.35, "Normal"}, {0.60, "Fast"}, {0.90, "Very Fast"} }
-        spinSpeedName = "Normal"
-        for _, pair in ipairs(map) do
-            if math.abs((spinSpeed or 0.35) - pair[1]) < 0.02 then
-                spinSpeedName = pair[2]
-                break
-            end
-        end
-    end
+    if type(data.spinSpeed) == "number" then spinSpeed = data.spinSpeed end
     if data.autoTpDownRadius ~= nil then
         autoTpDownRadius = tonumber(data.autoTpDownRadius) or autoTpDownRadius
         if autoTpDownRadiusBox then autoTpDownRadiusBox.Text = tostring(autoTpDownRadius) end
@@ -11460,20 +11434,12 @@ function buildGui()
         mkLabel(row, "Spin Speed")
         local spinSpeedOpts = {"Slow", "Normal", "Fast", "Very Fast"}
         local spinSpeedMap = { Slow = 0.15, Normal = 0.35, Fast = 0.60, ["Very Fast"] = 0.90 }
-        local curName = tostring(spinSpeedName or "Normal")
-        if not spinSpeedMap[curName] then
-            curName = "Normal"
-            for n, v in pairs(spinSpeedMap) do
-                if math.abs((spinSpeed or 0.35) - v) < 0.02 then curName = n break end
-            end
+        local curName = "Normal"
+        for n, v in pairs(spinSpeedMap) do
+            if math.abs((spinSpeed or 0.35) - v) < 0.01 then curName = n break end
         end
-        spinSpeedSelectorLabel = mkDropdown(combatPage, row, curName, spinSpeedOpts, function(picked)
-            spinSpeedName = tostring(picked or "Normal")
-            spinSpeed = spinSpeedMap[spinSpeedName] or 0.35
-            if spinSpeedSelectorLabel then
-                spinSpeedSelectorLabel.Text = spinSpeedName .. "  ▼"
-            end
-            _lastSavedJSON = nil
+        mkDropdown(combatPage, row, curName, spinSpeedOpts, function(picked)
+            spinSpeed = spinSpeedMap[picked] or 0.35
             pcall(saveAllSettings)
         end)
     end
@@ -11648,7 +11614,6 @@ function buildGui()
             -- alias: force Anti Aimbot V2 + enable
             antiAimbotMode = "V2"
             if antiAimbotModeLabel then antiAimbotModeLabel.Text = "V2  ▼" end
-            _lastSavedJSON = nil
             enableAntiAimbot()
         else
             if antiAimbotMode == "V2" then
@@ -14314,19 +14279,6 @@ function updateUIFromLoaded()
     if spinEnabled then
         pcall(startSpin)
         if setSpinVisual then setSpinVisual(true) end
-    end
-    -- Restore Spin Speed + Anti Aimbot Mode labels from saved config
-    if antiAimbotModeLabel then
-        antiAimbotModeLabel.Text = tostring(antiAimbotMode or "V1") .. "  ▼"
-    end
-    if spinSpeedSelectorLabel then
-        spinSpeedSelectorLabel.Text = tostring(spinSpeedName or "Normal") .. "  ▼"
-    end
-    if setAntiAimbotVisual then
-        pcall(setAntiAimbotVisual, antiAimbotEnabled == true)
-    end
-    if autoBatV2SetVisual then
-        pcall(autoBatV2SetVisual, antiAimbotEnabled == true and tostring(antiAimbotMode) == "V2")
     end
 
     if autoStealVariantLabel then autoStealVariantLabel.Text = autoStealVariantName(autoStealVariant or 1) .. "  ▼" end
