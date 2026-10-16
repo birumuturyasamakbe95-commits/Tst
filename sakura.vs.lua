@@ -1679,7 +1679,6 @@ batCounterV3StudBox = nil
 dropMode = 1
 antiLagEnabled = false
 removeAccessoriesEnabled = false
-customToolsEnabled = false
 stretchEnabled = false
 stretchFOV = 120
 uiLocked = true
@@ -2208,7 +2207,7 @@ local autoGrabStopTime = 0.96
 local autoGrabStopEnabled = true
 
 autoStealVariant = 1
-AUTO_STEAL_VARIANT_NAMES = { "Normal", "Semi" }
+AUTO_STEAL_VARIANT_NAMES = { "Normal", "Semi", "Semi Normal" }
 autoStealVariantLabel = nil
 
 local function autoStealVariantName(n)
@@ -2226,6 +2225,7 @@ end
 local function getAutoGrabStopTime()
     local dur = (Steal and Steal.StealDuration) or 1.3
     if autoStealVariant == 2 then return dur * 0.80 end -- Semi
+    if autoStealVariant == 3 then return dur * 0.90 end -- Semi Normal
     return dur * 0.75 -- Normal
 end
 
@@ -2827,32 +2827,13 @@ end
 
 
 -- ============================================================
--- SPIN ONLY BRAINROT — sadece pet/brainrot eldeyken (Ping Lagger AUTO ACTIVATE mantığı)
+-- SPIN (from metin) — Spin Anti Die Compulsory
 -- ============================================================
-local function isHoldingBrainrotForSpin()
-    local char = LP.Character
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.WalkSpeed > 0 and hum.WalkSpeed < 25 then
-        return true
-    end
-    if CarrySystem and type(CarrySystem.isCarrying) == "function" then
-        local ok, carrying = pcall(function() return CarrySystem:isCarrying() end)
-        if ok and carrying then return true end
-    end
-    local ok, v = pcall(function() return LP:GetAttribute("Stealing") end)
-    if ok and v == true then return true end
-    local ok2, v2 = pcall(function() return char:GetAttribute("Stealing") end)
-    if ok2 and v2 == true then return true end
-    return false
-end
-
 function startSpin()
     if spinConn then pcall(function() spinConn:Disconnect() end); spinConn = nil end
     spinEnabled = true
     spinConn = RunService.Heartbeat:Connect(function()
         if not spinEnabled then return end
-        if not isHoldingBrainrotForSpin() then return end
         local char = LP.Character
         if not char then return end
         local part = char:FindFirstChild("HumanoidRootPart")
@@ -2871,14 +2852,19 @@ end
 
 function setSpinEnabled(on)
     if on then
+        -- Önce Anti Die aç (1 sn önce), sonra Spin başlasın
         if not antiDieEnabled then
             antiDieEnabled = true
             pcall(function() AntiDieModule.start() end)
             if setAntiDieVisual then pcall(setAntiDieVisual, true) end
         end
-        spinEnabled = true
+        spinEnabled = true -- toggle state immediate
         if setSpinVisual then pcall(setSpinVisual, true) end
-        startSpin()
+        task.spawn(function()
+            task.wait(1)
+            if not spinEnabled then return end -- kapatıldıysa başlatma
+            startSpin()
+        end)
     else
         stopSpin()
         if setSpinVisual then pcall(setSpinVisual, false) end
@@ -5558,14 +5544,10 @@ end
 
 function setAntiAimbotMode(mode)
     mode = tostring(mode or "V1"):upper():gsub("%s+", "")
-    if mode == "2" or mode == "BYPASS" or mode == "CLEAN" then mode = "V2" end
     if mode ~= "V1" and mode ~= "V2" then mode = "V1" end
     antiAimbotMode = mode
     if antiAimbotModeLabel then
         antiAimbotModeLabel.Text = mode .. "  ▼"
-    end
-    if autoBatV2SetVisual then
-        pcall(autoBatV2SetVisual, antiAimbotEnabled == true and mode == "V2")
     end
     if antiAimbotEnabled then
         -- restart with new mode
@@ -7228,7 +7210,6 @@ function buildConfigTable()
         infiniteJump = (InfiniteJump and InfiniteJump.isRunning and InfiniteJump.isRunning()) == true,
         infJumpMode = infJumpMode or "HOLD",
         autoStealVariant = autoStealVariant or 1,
-        customToolsEnabled = customToolsEnabled == true,
         katanaSkinEnabled = katanaSkinEnabled == true,
         katanaSkinColorMode = katanaSkinColorMode or "Red",
         discordTextColorTheme = discordTextColorTheme or "White",
@@ -7254,17 +7235,7 @@ function buildConfigTable()
         uiScale = uiScaleValue,
         stealBarScale = stealBarScale or 100,
         antiAimbot = antiAimbotEnabled == true,
-        -- always persist mode explicitly (V2 must survive rejoin)
-        antiAimbotMode = (function()
-            local m = tostring(antiAimbotMode or "V1"):upper():gsub("%s+", "")
-            if m == "V2" or m == "2" or m == "BYPASS" then return "V2" end
-            return "V1"
-        end)(),
-        AntiAimbotMode = (function()
-            local m = tostring(antiAimbotMode or "V1"):upper():gsub("%s+", "")
-            if m == "V2" or m == "2" or m == "BYPASS" then return "V2" end
-            return "V1"
-        end)(),
+        antiAimbotMode = (tostring(antiAimbotMode or "V1"):upper() == "V2") and "V2" or "V1",
         taunt = tauntEnabled == true,
         spinEnabled = spinEnabled == true,
         spinSpeed = tonumber(spinSpeed) or 0.35,
@@ -7504,13 +7475,8 @@ function loadAllSettings()
     end
     infJumpMode = (data.infJumpMode == "MANUAL") and "MANUAL" or "HOLD"
     if infJumpModeLabel then infJumpModeLabel.Text = tostring(infJumpMode or "HOLD") .. "  ▼" end
-    do
-        local v = tonumber(data.autoStealVariant) or 1
-        if v >= 3 then v = 2 end -- old "Semi Normal" -> Semi
-        autoStealVariant = _clamp(v, 1, 2)
-    end
+    autoStealVariant = _clamp(tonumber(data.autoStealVariant) or 1, 1, 3)
     if autoStealVariantLabel then autoStealVariantLabel.Text = autoStealVariantName(autoStealVariant) end
-    customToolsEnabled = data.customToolsEnabled == true
     katanaSkinEnabled = data.katanaSkinEnabled == true
     katanaSkinColorMode = data.katanaSkinColorMode or "Red"
     if KatanaColorSelector then KatanaColorSelector.Text = tostring(katanaSkinColorMode) .. "  ▼" end
@@ -11571,8 +11537,8 @@ function buildGui()
     end)
     if setAntiDieVisual then setAntiDieVisual(antiDieEnabled) end
 
-    -- Spin Only Brainrot (sadece pet eldeyken)
-    setSpinVisual = mkToggle(combatPage, "Spin Only Brainrot", function(on)
+    -- Spin Anti Die Compulsory (spin açılınca anti die zorunlu açılır)
+    setSpinVisual = mkToggle(combatPage, "Spin Anti Die Compulsory", function(on)
         setSpinEnabled(on == true)
     end)
     if setSpinVisual then setSpinVisual(spinEnabled == true) end
@@ -11752,7 +11718,6 @@ function buildGui()
     -- Anti Aimbot toggle (V1 Spectrum / V2 Clean Bat Bypass)
     setAntiAimbotVisual = mkToggle(combatPage, "Anti Aimbot", function(on)
         if on then enableAntiAimbot() else disableAntiAimbot() end
-        _lastSavedJSON = nil
         pcall(saveAllSettings)
     end)
     if setAntiAimbotVisual then setAntiAimbotVisual(antiAimbotEnabled == true) end
@@ -11765,9 +11730,23 @@ function buildGui()
         end)
     end
 
-    -- Bypass Aimbot ayrı tuş kaldırıldı; V2 için "Anti Aimbot Mode" = V2 kullan
-    autoBatV2SetVisual = function(_on) end -- stub (eski referanslar kırılmasın)
+    autoBatV2SetVisual = mkToggle(combatPage, "Bypass Aimbot", function(on)
+        if on then
+            -- alias: force Anti Aimbot V2 + enable
+            antiAimbotMode = "V2"
+            if antiAimbotModeLabel then antiAimbotModeLabel.Text = "V2  ▼" end
+            _lastSavedJSON = nil
+            enableAntiAimbot()
+        else
+            if antiAimbotMode == "V2" then
+                disableAntiAimbot()
+            end
+            pcall(function() if BatBypassV2 then BatBypassV2.Stop() end end)
+        end
+        pcall(saveAllSettings)
+    end)
     _G.AceAimbotSetVisual = autoBatV2SetVisual
+    if autoBatV2SetVisual then autoBatV2SetVisual(antiAimbotEnabled == true and antiAimbotMode == "V2") end
 
     setAntiBatVisual = mkToggle(combatPage, "Anti Bat", function(on)
         setAntiBat(on)
@@ -12026,7 +12005,7 @@ function buildGui()
 
     do
         local row = mkRow(visualPage, 38)
-        mkLabel(row, "Skin Change")
+        mkLabel(row, "Outfit")
         local outfitNames = {}
         for i, cfg in ipairs(OUTFITS) do
             outfitNames[i] = cfg.label
@@ -12131,45 +12110,6 @@ function buildGui()
         pcall(saveAllSettings)
     end)
     if MinecraftBatSetVisual then MinecraftBatSetVisual(minecraftBatSkinEnabled) end
-
-    -- Custom Tools (Ember-style): Bat=Katana + Medusa skin together
-    customToolsEnabled = customToolsEnabled == true
-    setCustomToolsVisual = mkToggle(visualPage, "Custom Tools", function(on)
-        customToolsEnabled = on == true
-        if on then
-            -- Katana bat skin
-            katanaSkinEnabled = true
-            minecraftBatSkinEnabled = false
-            pcall(function()
-                if MinecraftBatSkin then
-                    MinecraftBatSkin.State.enabled = false
-                    pcall(function() MinecraftBatSkin.Remove() end)
-                end
-                if MinecraftBatSetVisual then pcall(MinecraftBatSetVisual, false) end
-                if KatanaSkin and KatanaSkin.SetColorMode then
-                    KatanaSkin.SetColorMode(katanaSkinColorMode or "Red")
-                elseif KatanaSkin then
-                    KatanaSkin.ApplySkin("KATANA")
-                end
-                if katanaSkinSetVisual then pcall(katanaSkinSetVisual, true) end
-            end)
-            -- Medusa tool skin if available
-            pcall(function()
-                if _G.RivalSetMedusaSkin then
-                    _G.RivalSetMedusaSkin(medusaSkinChoice or _G.RivalMedusaSkin or "Default")
-                end
-            end)
-        else
-            pcall(function()
-                katanaSkinEnabled = false
-                if KatanaSkin then KatanaSkin.ApplySkin("NONE") end
-                if katanaSkinSetVisual then pcall(katanaSkinSetVisual, false) end
-            end)
-        end
-        _lastSavedJSON = nil
-        pcall(saveAllSettings)
-    end)
-    if setCustomToolsVisual then setCustomToolsVisual(customToolsEnabled == true) end
 
     do
         local mcColorRow = mkRow(visualPage, 38)
@@ -12577,7 +12517,7 @@ function buildGui()
         end)
     end
 
-    setAntiLagVisual = mkToggle(visualPage, "FPS Booster", function(on)
+    setAntiLagVisual = mkToggle(visualPage, "Anti Lag", function(on)
         if on then enableAntiLag() else disableAntiLag() end
     end)
 
@@ -12603,62 +12543,13 @@ function buildGui()
     do
         local row = mkRow(configPage, 38)
         mkLabel(row, "Steal Radius")
-        local container = Instance.new("Frame", row)
-        container.Size = UDim2.new(0, 148, 1, 0)
-        container.Position = UDim2.new(1, -156, 0, 0)
-        container.BackgroundTransparency = 1
-        container.ZIndex = 8
-        local function applyRadius(v)
-            local n = _clamp(_floor((tonumber(v) or CONFIG.STEAL_RANGE) + 0.5), 5, 300)
-            CONFIG.STEAL_RANGE = n
-            Steal.StealRadius = n
-            if radInput then radInput.Text = tostring(n) end
-            pcall(saveAllSettings)
-        end
-        local minusBtn = Instance.new("TextButton", container)
-        minusBtn.Size = UDim2.new(0, 28, 0, 26)
-        minusBtn.Position = UDim2.new(0, 0, 0.5, -13)
-        minusBtn.BackgroundColor3 = INP
-        minusBtn.BorderSizePixel = 0
-        minusBtn.Text = "-"
-        minusBtn.TextColor3 = WHITE
-        minusBtn.Font = Enum.Font.GothamBold
-        minusBtn.TextSize = 16
-        minusBtn.AutoButtonColor = false
-        minusBtn.ZIndex = 9
-        Instance.new("UICorner", minusBtn).CornerRadius = UDim.new(0, 6)
-        radInput = Instance.new("TextBox", container)
-        radInput.Size = UDim2.new(0, 80, 0, 26)
-        radInput.Position = UDim2.new(0, 34, 0.5, -13)
-        radInput.BackgroundColor3 = INP
-        radInput.BorderSizePixel = 0
-        radInput.Text = tostring(CONFIG.STEAL_RANGE)
-        radInput.TextColor3 = WHITE
-        radInput.Font = Enum.Font.GothamBold
-        radInput.TextSize = 13
-        radInput.ClearTextOnFocus = false
-        radInput.ZIndex = 9
-        Instance.new("UICorner", radInput).CornerRadius = UDim.new(0, 6)
-        local plusBtn = Instance.new("TextButton", container)
-        plusBtn.Size = UDim2.new(0, 28, 0, 26)
-        plusBtn.Position = UDim2.new(1, -28, 0.5, -13)
-        plusBtn.BackgroundColor3 = INP
-        plusBtn.BorderSizePixel = 0
-        plusBtn.Text = "+"
-        plusBtn.TextColor3 = WHITE
-        plusBtn.Font = Enum.Font.GothamBold
-        plusBtn.TextSize = 16
-        plusBtn.AutoButtonColor = false
-        plusBtn.ZIndex = 9
-        Instance.new("UICorner", plusBtn).CornerRadius = UDim.new(0, 6)
-        minusBtn.MouseButton1Click:Connect(function()
-            applyRadius((tonumber(CONFIG.STEAL_RANGE) or 61) - 1)
-        end)
-        plusBtn.MouseButton1Click:Connect(function()
-            applyRadius((tonumber(CONFIG.STEAL_RANGE) or 61) + 1)
-        end)
-        radInput.FocusLost:Connect(function()
-            applyRadius(radInput.Text)
+        radInput = mkBox(row, CONFIG.STEAL_RANGE, 50, 56, function(v)
+            if v and v >= 5 and v <= 300 then
+                CONFIG.STEAL_RANGE = _floor(v+0.5)
+                Steal.StealRadius = CONFIG.STEAL_RANGE
+                radInput.Text = tostring(CONFIG.STEAL_RANGE)
+                saveAllSettings()
+            end
         end)
     end
 
@@ -13913,9 +13804,102 @@ antiAimbotFloatingButton = nil
 antiAimbotFloatingPos = nil
 
 function createAntiAimbotFloatingButton()
-    -- Kaldırıldı: mobile panel zaten ANTI AIMBOT tuşu var (çift buton olmasın)
-    antiAimbotFloatingButton = nil
-    return nil
+    local panel = Instance.new("ScreenGui")
+    panel.Name = "AntiAimbotButton"
+    panel.ResetOnSpawn = false
+    panel.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    panel.DisplayOrder = 22
+    pcall(function() if syn and syn.protect_gui then syn.protect_gui(panel) end end)
+    local okPanel = pcall(function() panel.Parent = game:GetService("CoreGui") end)
+    if not okPanel then panel.Parent = LP:WaitForChild("PlayerGui") end
+
+    local btnFrame = Instance.new("Frame", panel)
+    btnFrame.Size = UDim2.new(0, 60, 0, 60)
+    btnFrame.Name = "Frame"
+    if antiAimbotFloatingPos then
+        btnFrame.Position = UDim2.new(antiAimbotFloatingPos.XScale or 1,
+                                      antiAimbotFloatingPos.XOffset or -72,
+                                      antiAimbotFloatingPos.YScale or 0,
+                                      antiAimbotFloatingPos.YOffset or 76)
+    else
+        btnFrame.Position = UDim2.new(1, -72, 0, 76)
+    end
+    btnFrame.BackgroundColor3 = Color3.fromRGB(200, 30, 45)
+    btnFrame.BackgroundTransparency = 0
+    btnFrame.BorderSizePixel = 0
+    btnFrame.ZIndex = 20
+    Instance.new("UICorner", btnFrame).CornerRadius = getFloatingCornerRadius()
+    local bgGrad = Instance.new("UIGradient", btnFrame)
+    bgGrad.Name = "BtnGrad"
+    bgGrad.Rotation = 90
+    bgGrad.Enabled = false
+    local stroke = Instance.new("UIStroke", btnFrame)
+    stroke.Color = Color3.fromRGB(255, 80, 90)
+    stroke.Thickness = 1.4
+    stroke.Transparency = 0.2
+    local label = Instance.new("TextLabel", btnFrame)
+    label.Name = "TextLabel"
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "ANTI\nAIMBOT"
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.Font = Enum.Font.GothamBlack
+    label.TextSize = 10
+    label.TextWrapped = true
+    label.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+    label.TextStrokeTransparency = 0.3
+    label.ZIndex = 60
+
+    local uiScale = Instance.new("UIScale", btnFrame)
+    uiScale.Scale = floatingButtonScale
+    table.insert(_floatingUIScales, uiScale)
+
+    local function setActive(state)
+        label.Text = "ANTI\nAIMBOT"
+        paintFloatingBtn(btnFrame, state)
+    end
+
+    local dragging = false; local hasMoved = false; local dragStart, startPos
+    btnFrame.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; hasMoved = false; dragStart = inp.Position; startPos = btnFrame.Position
+        end
+    end)
+    btnFrame.InputChanged:Connect(function(inp)
+        if not dragging then return end
+        if inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch then
+            local delta = inp.Position - dragStart
+            if delta.Magnitude > 5 then hasMoved = true end
+            if hasMoved and not uiLocked then
+                btnFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                              startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end
+    end)
+    btnFrame.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
+                if not hasMoved then
+                    toggleAntiAimbot()
+                    setActive(antiAimbotEnabled)
+                    pcall(saveAllSettings)
+                elseif not uiLocked and hasMoved then
+                    antiAimbotFloatingPos = {
+                        XScale = btnFrame.Position.X.Scale,
+                        XOffset = btnFrame.Position.X.Offset,
+                        YScale = btnFrame.Position.Y.Scale,
+                        YOffset = btnFrame.Position.Y.Offset
+                    }
+                    pcall(saveAllSettings)
+                end
+                dragging = false; hasMoved = false
+            end
+        end
+    end)
+
+    paintFloatingBtn(btnFrame, antiAimbotEnabled == true)
+    antiAimbotFloatingButton = panel
+    return panel
 end
 
 function createBatV2FloatingButton()
@@ -14059,7 +14043,6 @@ function createInstaResetFloatingButton()
     instaResetFloatingButton = panel
     return panel
 end
-
 
 batCounterV2Enabled = false
 batCounterV2Debounce = false
@@ -14724,7 +14707,7 @@ task.spawn(function()
     MobilePanel = createMobilePanel()
     pcall(applyFloatingButtonShape)
     tpBatFloatingButton = createTpBatFloatingButton()
-    antiAimbotFloatingButton = nil -- tek anti aimbot: mobile panel (floating kopya kaldırıldı)
+    antiAimbotFloatingButton = createAntiAimbotFloatingButton()
     batV2FloatingButton = nil -- Bat V2 removed from GUI
     -- batV2FloatingButton = createBatV2FloatingButton()
     instaResetFloatingButton = createInstaResetFloatingButton()
